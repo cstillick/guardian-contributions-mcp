@@ -40,3 +40,11 @@ def test_static_assets_served(temp_db):
     c = _client()
     assert c.get("/static/ledger.css").status_code == 200
     assert c.get("/static/app.js").status_code == 200
+
+
+def test_search_page(temp_db):
+    seed_roe_store()
+    c = _client()
+    r = c.get("/search", params={"q": "roe"})
+    assert r.status_code == 200 and "Results" in r.text and "/c/11932" in r.text
+    assert c.get("/search").status_code == 200          # no query → prompt, no error

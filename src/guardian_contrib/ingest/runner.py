@@ -16,7 +16,7 @@ from ..config import Settings, get_settings
 from ..db import init_db, session_scope
 from ..models import Committee, Flag, Receipt, Report, Run, Summary
 from ..reporting_calendar import ReportingCalendar, build_calendar
-from ..roster import all_roster_candidates, norm_name, resolve_org_id
+from ..roster import all_roster_candidates, build_name_index, resolve_org_id
 from ..compute import flags as flagmod
 from ..compute.continuing import continuing_total, query_window_receipts
 from . import bulk as bulkmod
@@ -38,13 +38,9 @@ class BulkStats:
     max_receipt_date: dt.date | None
 
 
-def committee_name_index(session) -> dict[str, list[str]]:
-    """{normalized candidate name -> [distinct org_ids]} from stored committees (Rule 5)."""
-    idx: dict[str, list[str]] = {}
-    for c in session.scalars(select(Committee)):
-        if c.candidate_name:
-            idx.setdefault(norm_name(c.candidate_name), []).append(c.org_id)
-    return idx
+def committee_name_index(session):
+    """Token match index from stored committees (Rule 5)."""
+    return build_name_index((c.org_id, c.candidate_name) for c in session.scalars(select(Committee)))
 
 
 def run_bulk_ingest(session, text: str, cycle_year: int) -> BulkStats:
@@ -84,14 +80,18 @@ def run_bulk_ingest(session, text: str, cycle_year: int) -> BulkStats:
 
 def enrich_committee(
     session, client: GuardianClient, org_id: str, cycle_year: int,
-    report_regex: str = r"PRE-PRIMARY",
+    report_regex: str = r"PRE-PRIMARY", expected_district: str | None = None,
 ) -> dict:
     """Fetch committee detail + the target periodic report; store report+summary.
-    Rule 7: reject a report whose year != cycle_year. Returns an info dict."""
+    Rule 5: reject if the committee's district doesn't match the roster (wrong
+    person, same name). Rule 7: reject a report whose year != cycle_year."""
     info: dict = {"org_id": org_id, "report_stored": False, "rejected": None,
                   "version_count": 0, "continuing_reports": 0, "district": None}
 
     detail = client.committee_detail(org_id)
+    if expected_district and detail.district and detail.district != expected_district:
+        info["rejected"] = f"district {detail.district} != roster {expected_district}"
+        return info  # Rule 5: name matched a different-district committee
     comm = session.get(Committee, org_id)
     if comm is None:
         comm = Committee(org_id=org_id)
@@ -235,7 +235,7 @@ def _enrich_and_flag(session, client, year, cal, run_id) -> list[dict]:
             continue
         org_id = res["org_id"]
         try:
-            info = enrich_committee(session, client, org_id, year)
+            info = enrich_committee(session, client, org_id, year, expected_district=district)
         except Exception as e:  # network hiccup on one committee shouldn't kill the run
             _add_flag(session, run_id, flagmod.identity_mismatch(
                 org_id, name, f"enrich failed: {e!r}"))

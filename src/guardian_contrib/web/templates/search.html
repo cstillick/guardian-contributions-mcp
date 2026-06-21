@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Search — The Guardian Ledger{% endblock %}
+
+{% block content %}
+<section class="masthead rise">
+  <h1>Search</h1>
+  <p class="sub">Find any committee on file — candidates, PACs, parties — across the whole extract.</p>
+  <form method="get" action="/search" style="margin-top:18px">
+    <input class="bigsearch" name="q" value="{{ q or '' }}" placeholder="Name…" autofocus aria-label="Search committees">
+  </form>
+</section>
+
+{% if q and q.strip() %}
+  <div class="shead"><h2>Results</h2><span class="meta">{{ results.count }} for &ldquo;{{ q }}&rdquo;</span></div>
+  {% if results.candidates %}
+  <div class="ledger-wrap rise">
+    <table class="ledger">
+      <thead><tr>
+        <th>Candidate / Committee</th><th>District</th><th>Office</th><th>Type</th>
+      </tr></thead>
+      <tbody>
+        {% for c in results.candidates %}
+        <tr data-href="/c/{{ c.org_id }}">
+          <td class="cand">
+            <a href="/c/{{ c.org_id }}">{{ c.candidate_name or c.legal_name }}</a>
+            {% if c.party %}<span class="party">{{ c.party }}</span>{% endif %}
+            {% if c.has_multiple_committees %}<span class="pill warn" style="margin-left:6px">multiple</span>{% endif %}
+          </td>
+          <td class="dist">{{ c.district or '—' }}</td>
+          <td>{{ (c.office or '')|title or '—' }}</td>
+          <td class="dist">{{ c.committee_type or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty">No committees match &ldquo;{{ q }}&rdquo;.</div>
+  {% endif %}
+{% else %}
+  <div class="empty">Type a name above to search the full committee list.</div>
+{% endif %}
+{% endblock %}

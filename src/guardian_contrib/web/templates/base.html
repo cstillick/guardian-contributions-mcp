@@ -18,7 +18,7 @@
         <a href="/" class="{{ 'active' if active=='dashboard' }}">Roster</a>
         <a href="/flags" class="{{ 'active' if active=='flags' }}">Flags</a>
       </nav>
-      <form class="search" method="get" action="/" role="search">
+      <form class="search" method="get" action="/search" role="search">
         <input name="q" value="{{ q or '' }}" placeholder="Search candidates…" aria-label="Search candidates">
       </form>
     </div>

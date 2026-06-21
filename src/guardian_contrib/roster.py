@@ -62,12 +62,57 @@ def all_roster_candidates() -> list[tuple[str, str]]:
     return [(d, c) for d, cands in ROSTER_2026.items() for c in cands]
 
 
-def resolve_org_id(name: str, bulk_name_index: dict[str, list[str]] | None = None) -> dict:
+# Common nicknames -> canonical first name, so "Cindy Roe" matches "ROE, CYNTHIA".
+NICKNAMES = {
+    "cindy": "cynthia", "steve": "steven", "mike": "michael", "bob": "robert",
+    "rob": "robert", "bill": "william", "will": "william", "billy": "william",
+    "jim": "james", "jimmy": "james", "tom": "thomas", "tommy": "thomas",
+    "dave": "david", "dan": "daniel", "danny": "daniel", "chris": "christopher",
+    "matt": "matthew", "joe": "joseph", "joey": "joseph", "tony": "anthony",
+    "ed": "edward", "eddie": "edward", "ron": "ronald", "ronnie": "ronald",
+    "ken": "kenneth", "rick": "richard", "rich": "richard", "dick": "richard",
+    "greg": "gregory", "jeff": "jeffrey", "ben": "benjamin", "sam": "samuel",
+    "andy": "andrew", "nick": "nicholas", "deb": "deborah", "debbie": "deborah",
+    "kathy": "katherine", "cathy": "catherine", "becky": "rebecca", "liz": "elizabeth",
+    "beth": "elizabeth", "sue": "susan", "vicki": "victoria", "vicky": "victoria",
+    "gabe": "gabriel", "pat": "patrick", "fred": "frederick", "ted": "theodore",
+    "art": "arthur", "charlie": "charles", "kate": "katherine", "jen": "jennifer",
+    "jenny": "jennifer", "jenni": "jennifer",
+}
+
+
+def _canon(token: str) -> str:
+    return NICKNAMES.get(token, token)
+
+
+def canon_tokens(name: str) -> frozenset:
+    """Order-independent canonical token set — handles 'Last, First Middle' vs
+    'First Last' and nicknames. Single-letter initials are dropped so middle
+    initials don't have to match."""
+    return frozenset(_canon(t) for t in norm_name(name).split() if len(t) > 1)
+
+
+def build_name_index(pairs) -> list:
+    """Match index from (org_id, candidate_name) pairs -> [(org_id, tokenset)]."""
+    out = []
+    for org_id, cname in pairs:
+        toks = canon_tokens(cname or "")
+        if toks:
+            out.append((org_id, toks))
+    return out
+
+
+def resolve_org_id(name: str, name_index=None) -> dict:
     """Resolve a roster name to org_id(s).
 
-    Returns {org_id, candidates:[...all matches...], source, multiple:bool}.
-    Override map wins (verified). Otherwise consult a {normalized_candidate_name ->
-    [org_ids]} index built from the bulk extract. Never fuzzy (Rule 5).
+    Rule 5 (never last-name-only): a committee matches only if the roster's full
+    first+last token set (nickname-canonicalized) is a subset of the committee's
+    tokens — so "Roy Timmons" never matches "Aletia Timmons". The verified override
+    map wins; a name that hits two committees returns multiple=True (disambiguated
+    later by district).
+
+    name_index: list of (org_id, token_frozenset) from build_name_index().
+    Returns {org_id, candidates, source, multiple}.
     """
     key = norm_name(name)
     if key in ORG_OVERRIDES:
@@ -78,10 +123,19 @@ def resolve_org_id(name: str, bulk_name_index: dict[str, list[str]] | None = Non
         return {"org_id": oid, "candidates": [oid], "source": "no_pre_primary", "multiple": False}
     if key in NO_COMMITTEE_2026:
         return {"org_id": None, "candidates": [], "source": "no_committee", "multiple": False}
-    matches = (bulk_name_index or {}).get(key, [])
+
+    rtoks = canon_tokens(name)
+    matches: list[str] = []
+    if name_index and len(rtoks) >= 2:
+        seen: set[str] = set()
+        for org_id, ctoks in name_index:
+            if rtoks <= ctoks and org_id not in seen:
+                seen.add(org_id)
+                matches.append(org_id)
+        matches.sort()
     return {
         "org_id": matches[0] if len(matches) == 1 else None,
         "candidates": matches,
-        "source": "bulk" if matches else "unresolved",
+        "source": "name" if matches else "unresolved",
         "multiple": len(matches) > 1,
     }

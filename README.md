@@ -76,6 +76,7 @@ who just want to open a link and read the numbers, no API knowledge needed:
   (Beginning + Raised + Loan − Expended = Ending), the Pre-Primary-vs-Continuing
   split, itemized continuing contributions, filings, and flags.
 - **`/flags`** — every computed alert across the roster, grouped by severity.
+- **`/search`** — find any committee on file (candidates, PACs, parties) by name.
 
 Editorial broadsheet design; server-rendered (Jinja2 + bespoke CSS), no build step.
 
@@ -158,11 +159,11 @@ docker compose run --rm api guardian-ingest      # initial load
 Set `GUARDIAN_DATABASE_URL` to a Postgres DSN for production (SQLite is the local
 default — same schema). Pass `X-API-Key` on every request once keys are set.
 
-**A note on serverless (e.g. Vercel):** the read API and a frontend deploy fine,
-but the **ingestion is a long, stateful scraping job** that doesn't fit serverless
-time limits. For a hosted, always-fresh service, run the scraper on something that
-allows long jobs (a small worker, a cron box, or the compose above) writing to a
-shared Postgres, and serve reads from there.
+**Serverless split (Vercel) —** the read API + web UI deploy fine to Vercel, but
+the **ingestion is a long, stateful scrape** that doesn't fit serverless. The repo
+ships a ready split: **Vercel** (UI + `/v1`) + a **GitHub Actions cron** (the
+scraper) + **managed Postgres**. Files: `vercel.json`, `api/index.py`,
+`requirements.txt`, `.github/workflows/ingest.yml`. Step-by-step in **[DEPLOY.md](DEPLOY.md)**.
 
 ---
 

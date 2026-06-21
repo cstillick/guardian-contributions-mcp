@@ -44,6 +44,15 @@ def candidate(request: Request, org_id: str):
         context={"d": d, "active": "dashboard", "q": None})
 
 
+@router.get("/search", response_class=HTMLResponse)
+def search(request: Request, q: str | None = None):
+    results = (service.search_candidates(name=q) if q and q.strip()
+               else {"candidates": [], "count": 0, "as_of": {}})
+    return templates.TemplateResponse(
+        request=request, name="search.html",
+        context={"results": results, "q": q, "active": None})
+
+
 @router.get("/flags", response_class=HTMLResponse)
 def flags(request: Request):
     data = service.dashboard_overview()

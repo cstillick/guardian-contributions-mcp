@@ -26,7 +26,7 @@ from ..db import session_scope
 from ..models import Committee
 from ..money import to_cents
 from ..reporting_calendar import build_calendar
-from ..roster import ROSTER_2026, norm_name, resolve_org_id
+from ..roster import ROSTER_2026, build_name_index, resolve_org_id
 from .. import service
 
 ACCOUNTING = r'_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)'
@@ -35,13 +35,9 @@ HEADERS = ["Dist.", "Candidate", "Beg. Balance", "Raised", "Loan", "Expended",
 YELLOW = PatternFill("solid", fgColor="FFFF00")
 
 
-def _name_index() -> dict[str, list[str]]:
+def _name_index():
     with session_scope() as s:
-        idx: dict[str, list[str]] = {}
-        for c in s.scalars(select(Committee)):
-            if c.candidate_name:
-                idx.setdefault(norm_name(c.candidate_name), []).append(c.org_id)
-        return idx
+        return build_name_index((c.org_id, c.candidate_name) for c in s.scalars(select(Committee)))
 
 
 def _cents_or_none(decimal_str: str | None) -> int | None:

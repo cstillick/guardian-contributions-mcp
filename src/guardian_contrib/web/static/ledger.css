@@ -59,6 +59,10 @@ a:hover { text-decoration: underline; text-underline-offset: 2px; }
   background: var(--surface); border: 1px solid var(--line); border-radius: 7px; color: var(--ink);
 }
 .search input:focus { outline: none; border-color: var(--forest-2); box-shadow: 0 0 0 3px rgba(31,74,61,.1); }
+.bigsearch { font-family: "Hanken Grotesk", sans-serif; font-size: 18px; padding: 13px 17px;
+  width: 100%; max-width: 460px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 9px; color: var(--ink); }
+.bigsearch:focus { outline: none; border-color: var(--forest-2); box-shadow: 0 0 0 3px rgba(31,74,61,.12); }
 
 /* ---- masthead ---- */
 .masthead { padding: 40px 0 22px; }

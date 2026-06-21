@@ -401,15 +401,13 @@ def dashboard_overview(year=None) -> dict:
     """Roster-wide combined figures + inline flags for the web dashboard — one
     session, roster-driven (mirrors the xlsx deliverable). Money stays in cents;
     the web layer formats it."""
-    from .roster import all_roster_candidates, norm_name, resolve_org_id
+    from .roster import all_roster_candidates, build_name_index, resolve_org_id
 
     year = year or get_settings().default_cycle_year
     with session_scope() as s:
         cal = active_calendar(s, year)
-        name_index: dict[str, list[str]] = {}
-        for c in s.scalars(select(Committee)):
-            if c.candidate_name:
-                name_index.setdefault(norm_name(c.candidate_name), []).append(c.org_id)
+        name_index = build_name_index(
+            (c.org_id, c.candidate_name) for c in s.scalars(select(Committee)))
 
         rows, tot_raised, tot_loans, tot_ending, flagged, with_cmte = [], 0, 0, 0, 0, 0
         for district, name in all_roster_candidates():
