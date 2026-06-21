@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}The Guardian Ledger — 2026 House Roster{% endblock %}
+{% set af = data.as_of %}
+{% set cal = data.calendar %}
+{% set t = data.totals %}
+
+{% block content %}
+<section class="masthead rise">
+  <h1>The Money Ledger</h1>
+  <p class="sub">Every candidate's <b>Pre-Primary report</b> with all <b>Continuing
+  contributions</b> layered on top — the combined picture, reconciled to the penny.</p>
+  <div class="dateline">
+    {% if af.max_receipt_date %}
+      <span class="item">Extract as of <b>{{ af.max_receipt_date }}</b></span>
+      <span class="item">Continuing window <b>{{ cal.continuing_window.start }} → {{ cal.continuing_window.end }}</b></span>
+      <span class="item">Primary <b>{{ cal.primary_date }}</b></span>
+      <span class="item">
+        {% if af.changed_since_prev == false %}<span class="stale">no change since prior pull</span>
+        {% else %}<span class="fresh">updated</span>{% endif %}
+      </span>
+    {% else %}
+      <span class="item stale">No data yet — run <b>guardian-ingest</b> to load from Guardian.</span>
+    {% endif %}
+  </div>
+</section>
+
+<section class="stats rise" style="animation-delay:.05s">
+  <div class="stat"><div class="k mono">{{ t.candidates }}</div><div class="l sc">Candidates</div></div>
+  <div class="stat"><div class="k mono">{{ t.raised_cents|compact }}</div><div class="l sc">Total Raised</div></div>
+  <div class="stat"><div class="k mono">{{ t.loans_cents|compact }}</div><div class="l sc">Total Loans</div></div>
+  <div class="stat flag"><div class="k mono">{{ t.flagged }}</div><div class="l sc">Flagged</div></div>
+  <div class="stat"><div class="k mono">{{ t.districts }}</div><div class="l sc">Districts</div></div>
+</section>
+
+{% set noted = data.rows | selectattr('flags') | list %}
+{% if noted %}
+<div class="shead"><h2>Flags of note</h2><span class="meta">{{ noted|length }} candidates</span></div>
+<div class="flagstrip rise" style="animation-delay:.1s">
+  {% for r in noted %}
+    {% set sev = r.flags[0].severity %}
+    <div class="flagcard {{ sev }}">
+      {% if r.org_id %}<a href="/c/{{ r.org_id }}">{{ r.candidate }}</a>{% else %}<span>{{ r.candidate }}</span>{% endif %}
+      <span class="sc" style="letter-spacing:.08em">{{ r.district }} · {{ r.flags[0].type|flaglabel }}</span>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="shead"><h2>The Roster</h2>
+  <span class="meta">{{ t.with_committee }} of {{ t.candidates }} have a committee on Guardian</span></div>
+
+<div class="ledger-wrap rise" style="animation-delay:.15s">
+  <div class="controls">
+    <button class="chip on" data-dist="*">All</button>
+    {% for d in data.rows|map(attribute='district')|unique %}
+      <button class="chip" data-dist="{{ d }}">{{ d }}</button>
+    {% endfor %}
+    <span class="filterbox"><input id="filter" value="{{ q or '' }}" placeholder="Filter candidates…"></span>
+  </div>
+  <table class="ledger" id="ledger">
+    <thead><tr>
+      <th data-key="dist" data-type="text">District</th>
+      <th data-key="cand" data-type="text">Candidate</th>
+      <th class="num" data-key="beginning" data-type="num">Beginning</th>
+      <th class="num" data-key="raised" data-type="num">Raised</th>
+      <th class="num" data-key="loans" data-type="num">Loan</th>
+      <th class="num" data-key="expended" data-type="num">Expended</th>
+      <th class="num" data-key="ending" data-type="num">Ending</th>
+      <th data-key="flagged" data-type="num">Flags</th>
+    </tr></thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr data-dist="{{ r.district }}" data-cand="{{ r.candidate|lower }}"
+          data-beginning="{{ r.beginning_cents }}" data-raised="{{ r.raised_cents }}"
+          data-loans="{{ r.loans_cents }}" data-expended="{{ r.expended_cents }}"
+          data-ending="{{ r.ending_cents }}" data-flagged="{{ r.flags|length }}"
+          {% if r.org_id %}data-href="/c/{{ r.org_id }}"{% endif %}>
+        <td class="dist">{{ r.district }}</td>
+        <td class="cand">
+          {% if r.org_id %}<a href="/c/{{ r.org_id }}">{{ r.candidate }}</a>{% else %}{{ r.candidate }}{% endif %}
+          {% if r.party %}<span class="party">{{ r.party }}</span>{% endif %}
+        </td>
+        {% for key in ['beginning','raised','loans','expended','ending'] %}
+          {% set c = r[key ~ '_cents'] %}
+          <td class="num {{ 'neg' if c<0 else ('zero' if c==0 else '') }}{{ ' end' if key=='ending' }}">{{ c|money }}</td>
+        {% endfor %}
+        <td>
+          {% if r.flags %}<span class="rowflags">
+            {% for f in r.flags %}<span class="pill {{ f.severity }}" title="{{ f.type|flaglabel }}">{{ f.type|flaglabel }}</span>{% endfor %}
+          </span>{% else %}<span class="zero">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

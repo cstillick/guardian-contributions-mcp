@@ -43,9 +43,10 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/")
-def root():
-    return {"service": "guardian-contributions", "version": "0.1.0", "docs": "/docs"}
+@app.get("/api")
+def api_info():
+    return {"service": "guardian-contributions", "version": "0.1.0",
+            "docs": "/docs", "ui": "/"}
 
 
 # ---- Axis A: resolution & race -----------------------------------------
@@ -150,6 +151,13 @@ def refresh(body: RefreshBody, background: BackgroundTasks):
     background.add_task(ingest_run, year=body.year, enrich_roster=body.enrich_roster)
     return {"accepted": True, "year": body.year or get_settings().default_cycle_year,
             "note": "ingestion started in background; poll /v1/status"}
+
+
+# ---- web UI (Public Ledger) --------------------------------------------
+from ..web.routes import router as web_router, static as web_static  # noqa: E402
+
+app.mount("/static", web_static, name="static")
+app.include_router(web_router)
 
 
 def main() -> None:

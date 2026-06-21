@@ -8,7 +8,6 @@ Report PDF fetches are SEQUENTIAL on purpose (session-state collision, Rule 4).
 from __future__ import annotations
 
 import datetime as dt
-from collections import defaultdict
 from dataclasses import asdict, dataclass
 
 from sqlalchemy import delete, insert, select
@@ -39,13 +38,13 @@ class BulkStats:
     max_receipt_date: dt.date | None
 
 
-def build_name_index(records) -> dict[str, list[str]]:
-    """{normalized candidate name -> [distinct org_ids]} from the extract (Rule 5)."""
-    idx: dict[str, set[str]] = defaultdict(set)
-    for r in records:
-        if r.candidate_name:
-            idx[norm_name(r.candidate_name)].add(r.org_id)
-    return {k: sorted(v) for k, v in idx.items()}
+def committee_name_index(session) -> dict[str, list[str]]:
+    """{normalized candidate name -> [distinct org_ids]} from stored committees (Rule 5)."""
+    idx: dict[str, list[str]] = {}
+    for c in session.scalars(select(Committee)):
+        if c.candidate_name:
+            idx.setdefault(norm_name(c.candidate_name), []).append(c.org_id)
+    return idx
 
 
 def run_bulk_ingest(session, text: str, cycle_year: int) -> BulkStats:
@@ -186,7 +185,7 @@ def ingest_run(
 
             cal = _calendar_for(session, year, stats)
             run = Run(
-                started_at=dt.datetime.utcnow(), cycle_year=year,
+                started_at=dt.datetime.now(dt.UTC), cycle_year=year,
                 max_filed_date=stats.max_filed_date, max_receipt_date=stats.max_receipt_date,
                 primary_date=cal.primary_date, pre_primary_start=cal.pre_primary_start,
                 pre_primary_end=cal.pre_primary_end, continuing_start=cal.continuing_start,
@@ -223,7 +222,7 @@ def _calendar_for(session, year: int, stats: BulkStats) -> ReportingCalendar:
 
 
 def _enrich_and_flag(session, client, year, cal, run_id) -> list[dict]:
-    name_index = build_name_index(query_all_records(session, year))
+    name_index = committee_name_index(session)
     out = []
     for district, name in all_roster_candidates():
         res = resolve_org_id(name, name_index)
@@ -244,11 +243,6 @@ def _enrich_and_flag(session, client, year, cal, run_id) -> list[dict]:
         _compute_committee_flags(session, run_id, org_id, name, year, cal, info)
         out.append({"name": name, "district": district, **info})
     return out
-
-
-def query_all_records(session, year):
-    """Lightweight receipt rows for name-index building."""
-    return session.scalars(select(Receipt).where(Receipt.cycle_year == year)).all()
 
 
 def _compute_committee_flags(session, run_id, org_id, name, year, cal, info):

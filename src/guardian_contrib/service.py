@@ -394,3 +394,107 @@ def query(select_obj: dict, category: str, window: dict | None = None,
         caveats = ["Ending omits continuing-period spending"] if cat == "combined" else []
         return {"as_of": as_of(s, year), "selection": select_obj, "category": cat,
                 "resolved_org_ids": org_ids, "data": data, "caveats": caveats}
+
+
+# ---- dashboard overview (web) ------------------------------------------
+def dashboard_overview(year=None) -> dict:
+    """Roster-wide combined figures + inline flags for the web dashboard — one
+    session, roster-driven (mirrors the xlsx deliverable). Money stays in cents;
+    the web layer formats it."""
+    from .roster import all_roster_candidates, norm_name, resolve_org_id
+
+    year = year or get_settings().default_cycle_year
+    with session_scope() as s:
+        cal = active_calendar(s, year)
+        name_index: dict[str, list[str]] = {}
+        for c in s.scalars(select(Committee)):
+            if c.candidate_name:
+                name_index.setdefault(norm_name(c.candidate_name), []).append(c.org_id)
+
+        rows, tot_raised, tot_loans, tot_ending, flagged, with_cmte = [], 0, 0, 0, 0, 0
+        for district, name in all_roster_candidates():
+            res = resolve_org_id(name, name_index)
+            org_id = res["org_id"]
+            flags: list[dict] = []
+            if org_id:
+                with_cmte += 1
+                rep, sm = _summary_for_org(s, org_id)
+                receipts = query_window_receipts(s, org_id, year, cal.continuing_start, cal.continuing_end)
+                ct = continuing_total(receipts, cal.continuing_start, cal.continuing_end)
+                combined = build_combined(
+                    org_id,
+                    sm.beginning_cents if sm else None,
+                    sm.raised_excl_loans_cents if sm else None,
+                    sm.loans_cents if sm else None,
+                    sm.expended_cents if sm else None,
+                    ct, has_pre_primary=sm is not None,
+                )
+                comm = s.get(Committee, org_id)
+                if combined.loans_cents > 0 and combined.loans_cents >= combined.raised_cents:
+                    flags.append({"type": "large_loan", "severity": "high"})
+                elif combined.loans_cents >= 1_000_000:
+                    flags.append({"type": "large_loan", "severity": "warn"})
+                if not combined.has_pre_primary:
+                    flags.append({"type": "no_pre_primary", "severity": "info"})
+                row = {
+                    "district": district, "candidate": name, "org_id": org_id,
+                    "party": comm.party if comm else None,
+                    "beginning_cents": combined.beginning_cents,
+                    "raised_cents": combined.raised_cents,
+                    "loans_cents": combined.loans_cents,
+                    "expended_cents": combined.expended_cents,
+                    "ending_cents": combined.ending_cents,
+                    "continuing_raised_cents": combined.continuing_raised_cents,
+                    "has_pre_primary": combined.has_pre_primary,
+                    "note": combined.note, "flags": flags,
+                    "identity_ok": combined.identity_ok(),
+                }
+                tot_raised += combined.raised_cents
+                tot_loans += combined.loans_cents
+                tot_ending += combined.ending_cents
+            else:
+                if res["source"] == "no_committee":
+                    flags.append({"type": "no_committee", "severity": "warn"})
+                elif res["multiple"]:
+                    flags.append({"type": "multiple_committees", "severity": "warn"})
+                row = {
+                    "district": district, "candidate": name, "org_id": None, "party": None,
+                    "beginning_cents": 0, "raised_cents": 0, "loans_cents": 0,
+                    "expended_cents": 0, "ending_cents": 0, "continuing_raised_cents": 0,
+                    "has_pre_primary": False,
+                    "note": ("No committee found" if res["source"] == "no_committee" else "Unresolved"),
+                    "flags": flags, "identity_ok": True,
+                }
+            if flags:
+                flagged += 1
+            rows.append(row)
+
+        return {
+            "as_of": as_of(s, year),
+            "calendar": cal.to_dict(),
+            "totals": {
+                "raised_cents": tot_raised, "loans_cents": tot_loans,
+                "ending_cents": tot_ending, "candidates": len(rows),
+                "with_committee": with_cmte, "flagged": flagged,
+                "districts": len({r["district"] for r in rows}),
+            },
+            "rows": rows,
+        }
+
+
+def candidate_dossier(org_id: str, year=None) -> dict:
+    """Everything the detail page needs, composed from the atomic service calls."""
+    year = year or get_settings().default_cycle_year
+    with session_scope() as s:
+        cal = active_calendar(s, year)
+    return {
+        "committee": get_committee(org_id),
+        "combined": get_combined(org_id, year),
+        "summary": get_summary(org_id),
+        "continuing": get_continuing(org_id, year=year),
+        "contributions": get_contributions(
+            org_id=org_id, date_from=cal.continuing_start.isoformat(),
+            date_to=cal.continuing_end.isoformat(), year=year),
+        "filings": list_filings(org_id),
+        "flags": get_flags(org_id=org_id, year=year),
+    }

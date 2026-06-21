@@ -38,8 +38,8 @@ uv run guardian-ingest --no-reports     # fast: bulk contributions only (~5s)
 #   ~1–2 min because it walks Guardian's report pages one at a time):
 # uv run guardian-ingest
 
-# 3) start the API and open the docs
-uv run guardian-api           # -> http://localhost:8000/docs
+# 3) start the server — web dashboard + REST API + interactive docs
+uv run guardian-api           # dashboard: http://localhost:8000   ·   API docs: /docs
 ```
 
 Then ask it things:
@@ -61,6 +61,23 @@ curl "localhost:8000/v1/flags?district=HD-42"
 
 > `guardian-ingest` needs outbound access to `guardian.ok.gov`. Reads come
 > entirely from the local database — Guardian is never touched on the request path.
+
+---
+
+## Web dashboard
+
+`guardian-api` also serves a browsable **"Public Ledger"** UI at `/` — for people
+who just want to open a link and read the numbers, no API knowledge needed:
+
+- **`/`** — the roster as a sortable, filterable ledger: each candidate's combined
+  Beginning / Raised / Loan / Expended / Ending, with self-dealing-loan and other
+  flags surfaced and a freshness dateline.
+- **`/c/{org_id}`** — a candidate dossier: the balance shown as an equation
+  (Beginning + Raised + Loan − Expended = Ending), the Pre-Primary-vs-Continuing
+  split, itemized continuing contributions, filings, and flags.
+- **`/flags`** — every computed alert across the roster, grouped by severity.
+
+Editorial broadsheet design; server-rendered (Jinja2 + bespoke CSS), no build step.
 
 ---
 

@@ -73,7 +73,13 @@ def download_bulk(settings: Settings, year: int | None = None) -> bytes:
 
 def unzip_to_text(raw: bytes) -> str:
     z = zipfile.ZipFile(io.BytesIO(raw))
-    return z.read(z.namelist()[0]).decode("utf-8", errors="replace")
+    data = z.read(z.namelist()[0])
+    # Guardian's IIS export is Windows-1252 (smart quotes etc.); fall back to it
+    # so "OKLAHOMA'S" doesn't become "OKLAHOMA�S".
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data.decode("cp1252", errors="replace")
 
 
 def parse_extract(text: str) -> tuple[list[str], dict[str, int], list[list[str]], int]:

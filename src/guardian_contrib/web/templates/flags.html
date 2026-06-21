@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Flags — The Guardian Ledger{% endblock %}
+{% set titles = {'high':'Self-dealing & high severity','warn':'Warnings','info':'Notes'} %}
+
+{% block content %}
+<section class="masthead rise">
+  <h1>Flags</h1>
+  <p class="sub">Computed alerts across the roster — loans that exceed money raised,
+  sub-$1,000 receipts that escape continuing reports, missing committees, and more.</p>
+  <div class="dateline">
+    <span class="item">Extract as of <b>{{ data.as_of.max_receipt_date or '—' }}</b></span>
+    <span class="item"><b>{{ (groups.high|length) + (groups.warn|length) + (groups.info|length) }}</b> flags on <b>{{ data.totals.flagged }}</b> candidates</span>
+  </div>
+</section>
+
+{% for sev in ['high','warn','info'] %}
+  {% if groups[sev] %}
+  <div class="shead"><h2>{{ titles[sev] }}</h2><span class="meta">{{ groups[sev]|length }}</span></div>
+  <div class="ledger-wrap rise" style="margin-bottom:20px">
+    <table class="ledger">
+      <thead><tr>
+        <th>District</th><th>Candidate</th><th>Flag</th>
+        <th class="num">Loan</th><th class="num">Raised</th>
+      </tr></thead>
+      <tbody>
+      {% for it in groups[sev] %}
+        {% set r = it.row %}
+        <tr {% if r.org_id %}data-href="/c/{{ r.org_id }}"{% endif %}>
+          <td class="dist">{{ r.district }}</td>
+          <td class="cand">{% if r.org_id %}<a href="/c/{{ r.org_id }}">{{ r.candidate }}</a>{% else %}{{ r.candidate }}{% endif %}
+            {% if r.party %}<span class="party">{{ r.party }}</span>{% endif %}</td>
+          <td><span class="pill {{ it.flag.severity }}">{{ it.flag.type|flaglabel }}</span></td>
+          <td class="num {{ 'neg' if r.loans_cents<0 else ('zero' if r.loans_cents==0 else '') }}">{{ r.loans_cents|money }}</td>
+          <td class="num {{ 'zero' if r.raised_cents==0 }}">{{ r.raised_cents|money }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+{% endfor %}
+
+{% if not (groups.high or groups.warn or groups.info) %}
+  <div class="empty">No flags on record. Run <b>guardian-ingest</b> to compute them.</div>
+{% endif %}
+{% endblock %}

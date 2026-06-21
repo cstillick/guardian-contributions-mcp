@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% set c = d.combined %}
+{% set cm = d.committee %}
+{% set pps = d.summary.summary %}
+{% block title %}{{ cm.candidate_name or c.candidate }} — The Guardian Ledger{% endblock %}
+
+{% block content %}
+<p class="back rise"><a href="/">← Roster</a></p>
+
+<section class="dossier-head rise">
+  <div class="sc">{{ cm.district or c.district or '—' }} · Org {{ cm.org_id }}</div>
+  <h1>{{ cm.candidate_name or c.candidate or cm.legal_name }}</h1>
+  <div class="meta">
+    {% if cm.party %}<span><b>{{ cm.party }}</b></span>{% endif %}
+    {% if cm.office %}<span>{{ cm.office|title }}</span>{% endif %}
+    {% if cm.election %}<span>{{ cm.election|title }}</span>{% endif %}
+    {% if cm.status %}<span>Status: <b>{{ cm.status }}</b></span>{% endif %}
+    {% if cm.legal_name %}<span>{{ cm.legal_name }}</span>{% endif %}
+  </div>
+</section>
+
+<div class="grid2">
+  <div>
+    <div class="card rise" style="animation-delay:.05s">
+      <h3>Combined balance</h3>
+      <div class="eq">
+        <div class="line"><span class="lab">Beginning balance</span>
+          <span class="val {{ 'neg' if c.beginning is negative_d }}">{{ c.beginning|dmoney }}</span></div>
+        <div class="line"><span class="lab"><span class="op">+</span>Raised</span>
+          <span class="val">{{ c.raised|dmoney }}</span></div>
+        <div class="sub">Pre-Primary {{ (pps.raised_excl_loans if pps else None)|dmoney }}
+          + {{ c.continuing_raised|dmoney }} continuing ({{ c.continuing_count }} receipts)</div>
+        <div class="line"><span class="lab"><span class="op">+</span>Loans</span>
+          <span class="val {{ 'neg' if c.loans is negative_d }}">{{ c.loans|dmoney }}</span></div>
+        <div class="line"><span class="lab"><span class="op">−</span>Expended</span>
+          <span class="val">{{ c.expended|dmoney }}</span></div>
+        <div class="line total"><span class="lab">Ending balance</span>
+          <span class="val {{ 'neg' if c.ending is negative_d }}">{{ c.ending|dmoney }}</span></div>
+      </div>
+      {% if c.identity_ok %}<div class="checkline">✓ Beginning + Raised + Loan − Expended = Ending</div>{% endif %}
+      {% for cav in c.caveats %}<div class="caveat">⚠ {{ cav }}</div>{% endfor %}
+    </div>
+
+    <div class="card rise" style="animation-delay:.1s; margin-top:22px">
+      <h3>Continuing contributions <span class="meta sc" style="font-family:'IBM Plex Mono'">{{ d.contributions.totals.count }} · {{ d.contributions.totals.raised|dmoney }}</span></h3>
+      {% if d.contributions['items'] %}
+      <table class="contrib">
+        {% for it in d.contributions['items'] %}
+        <tr>
+          <td class="d">{{ it.date }}</td>
+          <td>{{ it.source_name or '—' }}<span class="t"> · {{ it.receipt_type }}</span></td>
+          <td class="a {{ 'neg' if (it.amount is negative_d) }}">{{ it.amount|dmoney }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}<div class="empty">No continuing-window contributions on record.</div>{% endif %}
+    </div>
+  </div>
+
+  <div>
+    <div class="card rise" style="animation-delay:.08s">
+      <h3>At a glance</h3>
+      <div class="eq">
+        <div class="line"><span class="lab">Pre-Primary report</span><span class="val">{{ 'yes' if c.has_pre_primary else 'none' }}</span></div>
+        <div class="line"><span class="lab">Continuing raised</span><span class="val">{{ c.continuing_raised|dmoney }}</span></div>
+        <div class="line"><span class="lab">Continuing loans</span><span class="val">{{ c.continuing_loans|dmoney }}</span></div>
+        <div class="line"><span class="lab">Filings on record</span><span class="val">{{ d.filings.filings|length }}</span></div>
+        {% if cm.other_committees %}<div class="line"><span class="lab">Other committees</span><span class="val">{{ cm.other_committees|join(', ') }}</span></div>{% endif %}
+      </div>
+    </div>
+
+    <div class="card rise" style="animation-delay:.12s; margin-top:22px">
+      <h3>Flags</h3>
+      {% if d.flags.flags %}
+      <div class="flaglist">
+        {% for f in d.flags.flags %}
+        <div class="flagitem {{ f.severity }}">
+          <div class="ft">{{ f.type|flaglabel }}</div>
+          <div class="fd">{{ f.detail }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}<div class="empty">No flags.</div>{% endif %}
+    </div>
+
+    <div class="card rise" style="animation-delay:.16s; margin-top:22px">
+      <h3>Filings</h3>
+      {% if d.filings.filings %}
+      <table class="contrib">
+        {% for fl in d.filings.filings %}
+        <tr><td>{{ fl.report_type }}</td><td class="d a">{{ fl.period_start or '' }}{% if fl.period_end %} → {{ fl.period_end }}{% endif %}</td></tr>
+        {% endfor %}
+      </table>
+      {% else %}<div class="empty">No filings parsed yet.</div>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
