@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "guardian-contrib"
+version = "0.1.0"
+description = "Oklahoma Ethics 'Guardian' campaign-finance service: REST API + MCP front-end for combined Pre-Primary + Continuing contribution reporting."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "cstillick" }]
+dependencies = [
+    "httpx>=0.27",
+    "pypdf>=4.2",
+    "SQLAlchemy>=2.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "mcp>=1.2",
+    "openpyxl>=3.1",
+    "APScheduler>=3.10",
+    "python-dateutil>=2.9",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.1"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "respx>=0.21"]
+
+[project.scripts]
+guardian-ingest = "guardian_contrib.ingest.runner:main"
+guardian-api = "guardian_contrib.api.app:main"
+guardian-mcp = "guardian_contrib.mcp_server.server:main"
+guardian-build-sheet = "guardian_contrib.builder.xlsx:main"
+guardian-schedule = "guardian_contrib.scheduler:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/guardian_contrib"]
+
+# Local dev on this machine: the project path contains spaces, which silently
+# breaks uv's editable install -> imports fail. Always run with `PYTHONPATH=src`
+# (and pytest is configured below) so imports resolve regardless.
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.uv]
+# Manage dependencies but don't attempt the (spaced-path-broken) editable
+# self-install; we import via PYTHONPATH=src locally and `pip install .` in Docker.
+package = false

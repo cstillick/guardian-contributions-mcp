@@ -1,0 +1,49 @@
+# Hosted deployment: Postgres + API + nightly scheduler.
+#   cd deploy && docker compose up -d --build
+#   docker compose run --rm api guardian-ingest        # one-off initial load
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: guardian
+      POSTGRES_PASSWORD: guardian
+      POSTGRES_DB: guardian
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U guardian"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      GUARDIAN_DATABASE_URL: postgresql+psycopg://guardian:guardian@db:5432/guardian
+      GUARDIAN_DEFAULT_CYCLE_YEAR: "2026"
+      GUARDIAN_API_KEYS: "${GUARDIAN_API_KEYS:-}"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  scheduler:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: ["guardian-schedule"]
+    environment:
+      GUARDIAN_DATABASE_URL: postgresql+psycopg://guardian:guardian@db:5432/guardian
+      GUARDIAN_DEFAULT_CYCLE_YEAR: "2026"
+    volumes:
+      - pdfcache:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  pdfcache:
