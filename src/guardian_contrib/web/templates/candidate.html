@@ -95,4 +95,53 @@
     </div>
   </div>
 </div>
+
+<div class="shead" style="margin-top:34px"><h2>Contributions</h2>
+  <span class="meta">cycle: raised {{ d.periods.totals.raised_cents|money }} ·
+    itemized {{ d.periods.totals.itemized_cents|money }} ·
+    unitemized {{ d.periods.totals.unitemized_cents|money }}</span></div>
+
+<div class="card rise chart-card">
+  <h4>Money raised over time</h4>
+  <p class="csub">Cumulative itemized contributions through the cycle — hover for detail</p>
+  {{ line_chart(d.charts.series)|safe }}
+</div>
+
+<div class="grid2" style="margin-top:22px">
+  <div class="card rise chart-card">
+    <h4>Where the money came from</h4>
+    <p class="csub">By source type</p>
+    {{ segmented_bar(d.charts.sources)|safe }}
+  </div>
+  <div class="card rise chart-card">
+    <h4>Top contributors</h4>
+    <p class="csub">Largest itemized gifts</p>
+    {{ hbar_chart(d.charts.top)|safe }}
+  </div>
+</div>
+
+<div class="card rise" style="margin-top:22px">
+  <h3>By reporting period</h3>
+  {% if d.periods.periods %}
+  <div style="overflow-x:auto">
+  <table class="contrib" style="min-width:600px">
+    <thead><tr>
+      <th>Period</th><th class="a">Beginning</th><th class="a">Raised</th>
+      <th class="a">Itemized</th><th class="a">Unitemized</th><th class="a">Expended</th><th class="a">Ending</th>
+    </tr></thead>
+    {% for p in d.periods.periods %}
+    <tr>
+      <td>{{ p.report_type }}<span class="t"> · {{ p.period_start }} → {{ p.period_end }}</span></td>
+      <td class="a">{{ p.beginning_cents|money }}</td>
+      <td class="a">{{ p.raised_cents|money }}</td>
+      <td class="a">{{ p.itemized_cents|money }}</td>
+      <td class="a {{ 'zero' if p.unitemized_cents == 0 }}">{{ p.unitemized_cents|money }}</td>
+      <td class="a">{{ p.expended_cents|money }}</td>
+      <td class="a end">{{ p.ending_cents|money }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}<div class="empty">No periodic reports parsed yet.</div>{% endif %}
+</div>
 {% endblock %}

@@ -166,11 +166,15 @@ class GuardianClient:
         )
 
     # --- report PDF retrieval (the postback chain) -----------------------
-    def fetch_report(self, org_id: str, want: str = r"PRE-PRIMARY") -> ReportFetch | None:
+    def fetch_report(self, org_id: str, want: str = r"PRE-PRIMARY",
+                     anchor: str | None = None) -> ReportFetch | None:
         detail = self._detail_url(org_id)
         h1 = self._http.get(detail).text
         anchors = [(m.group(1), m.group(2).strip()) for m in _FILING_RE.finditer(h1)]
-        tgt = next((a for a in anchors if re.search(want, a[1], re.I)), None)
+        if anchor is not None:
+            tgt = next((a for a in anchors if a[0] == anchor), None)
+        else:
+            tgt = next((a for a in anchors if re.search(want, a[1], re.I)), None)
         if not tgt:
             return None
 

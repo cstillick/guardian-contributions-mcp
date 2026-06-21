@@ -192,6 +192,40 @@ td.num { text-align: right; font-family: "IBM Plex Mono", monospace; font-varian
 footer { margin: 48px 0 36px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
 footer a { color: var(--ink-soft); }
 
+/* ---- charts ---- */
+.chart { width: 100%; height: auto; display: block; overflow: visible; }
+.chart-empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+.chart-card h4 { font-family: "Fraunces", serif; font-weight: 600; font-size: 15px; margin: 0 0 3px; }
+.chart-card .csub { font-size: 12.5px; color: var(--muted); margin: 0 0 14px; }
+.ch-ax { fill: var(--faint); font-size: 11px; font-family: "IBM Plex Mono", monospace; }
+.ch-lbl { fill: var(--ink-soft); font-size: 13px; }
+.ch-val { fill: var(--ink); font-size: 12.5px; font-family: "IBM Plex Mono", monospace; }
+.ch-area { fill: var(--forest); opacity: .09; animation: fadein 1s ease both; }
+.ch-line { fill: none; stroke: var(--forest); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round;
+  stroke-dasharray: 2400; stroke-dashoffset: 2400; animation: draw 1.6s cubic-bezier(.3,.7,.3,1) forwards; }
+.ch-dot { fill: var(--surface); stroke: var(--forest); stroke-width: 1.6; opacity: 0;
+  animation: fadein .4s ease forwards; animation-delay: 1.4s; cursor: pointer; transition: fill .1s; }
+.ch-dot:hover { fill: var(--forest); }
+.ch-bar { fill: var(--forest); transform-box: fill-box; transform-origin: left center;
+  animation: growx .85s cubic-bezier(.2,.8,.3,1) both; cursor: pointer; transition: fill .12s; }
+.ch-bar:hover { fill: var(--forest-2); }
+.ch-seg { transform-box: fill-box; transform-origin: left center; opacity: 0;
+  animation: segin .7s cubic-bezier(.2,.8,.3,1) both; cursor: pointer; transition: opacity .12s; }
+.ch-seg:hover { opacity: .82; }
+.contrib thead th { text-align: left; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); padding: 7px 6px; border-bottom: 2px solid var(--rule); font-weight: 600; }
+.contrib thead th.a { text-align: right; }
+#chart-tip { position: fixed; z-index: 60; pointer-events: none; background: var(--ink); color: var(--paper);
+  font-size: 12px; font-family: "IBM Plex Mono", monospace; padding: 5px 9px; border-radius: 6px;
+  opacity: 0; transition: opacity .12s; white-space: nowrap; box-shadow: 0 8px 22px -8px rgba(0,0,0,.45); }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes growx { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes segin { from { opacity: 0; transform: scaleX(.2); } to { opacity: 1; transform: scaleX(1); } }
+@keyframes fadein { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .ch-line, .ch-bar, .ch-seg, .ch-area, .ch-dot { animation: none !important; stroke-dashoffset: 0; opacity: 1; transform: none; }
+}
+
 /* motion */
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .rise { animation: rise .5s cubic-bezier(.2,.7,.3,1) both; }

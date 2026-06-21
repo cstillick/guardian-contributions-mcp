@@ -480,6 +480,58 @@ def dashboard_overview(year=None) -> dict:
         }
 
 
+def _itemized_in_period(s, org_id, year, start, end) -> int:
+    """Itemized CASH contributions in a period from the extract — excludes loans and
+    in-kind so it compares against the report's cash 'Total Funds Received'."""
+    from .ingest.bulk import NON_RECEIPT_TYPES
+    if not start or not end:
+        return 0
+    total = 0
+    for r in query_window_receipts(s, org_id, year, start, end):
+        rt = r.receipt_type or ""
+        if (r.amended or "").upper() == "Y" or rt in NON_RECEIPT_TYPES:
+            continue
+        if rt == "Loan" or "kind" in rt.lower():
+            continue
+        if r.date and start <= r.date <= end:
+            total += r.amount_cents
+    return total
+
+
+def get_periods(org_id: str, year=None) -> dict:
+    """Every periodic report's balances for the cycle (layering model, §8) plus the
+    itemized-vs-unitemized split per period. Unitemized = reported Raised − itemized
+    receipts in the extract for that period (the sub-$200 / aggregated money OK never
+    discloses names for)."""
+    year = year or get_settings().default_cycle_year
+    with session_scope() as s:
+        reps = list(s.scalars(
+            select(Report).where(Report.org_id == org_id, Report.report_class == "periodic",
+                                  Report.cycle_year == year).order_by(Report.period_start)))
+        rows, tot_raised, tot_itemized = [], 0, 0
+        for rep in reps:
+            sm = s.get(Summary, rep.filing_id)
+            if not sm:
+                continue
+            raised = sm.raised_excl_loans_cents or 0
+            itemized = _itemized_in_period(s, org_id, year, rep.period_start, rep.period_end)
+            unitemized = max(0, raised - itemized)
+            rows.append({
+                "report_type": rep.report_type,
+                "period_start": rep.period_start.isoformat() if rep.period_start else None,
+                "period_end": rep.period_end.isoformat() if rep.period_end else None,
+                "beginning_cents": sm.beginning_cents or 0, "raised_cents": raised,
+                "loans_cents": sm.loans_cents or 0, "expended_cents": sm.expended_cents or 0,
+                "ending_cents": sm.ending_cents or 0,
+                "itemized_cents": itemized, "unitemized_cents": unitemized,
+            })
+            tot_raised += raised
+            tot_itemized += itemized
+        return {"periods": rows,
+                "totals": {"raised_cents": tot_raised, "itemized_cents": tot_itemized,
+                           "unitemized_cents": max(0, tot_raised - tot_itemized)}}
+
+
 def candidate_dossier(org_id: str, year=None) -> dict:
     """Everything the detail page needs, composed from the atomic service calls."""
     year = year or get_settings().default_cycle_year
@@ -490,9 +542,77 @@ def candidate_dossier(org_id: str, year=None) -> dict:
         "combined": get_combined(org_id, year),
         "summary": get_summary(org_id),
         "continuing": get_continuing(org_id, year=year),
+        "periods": get_periods(org_id, year),
         "contributions": get_contributions(
             org_id=org_id, date_from=cal.continuing_start.isoformat(),
             date_to=cal.continuing_end.isoformat(), year=year),
         "filings": list_filings(org_id),
         "flags": get_flags(org_id=org_id, year=year),
+        "charts": {
+            "series": series_for_orgs([org_id], year),
+            "sources": funding_sources(org_id, year),
+            "top": top_contributors(org_id, year),
+        },
     }
+
+
+# ---- chart data ---------------------------------------------------------
+def _contrib_rows(s, org_ids, year):
+    """Non-amended, non-refund receipts for the given committees (incl. loans)."""
+    from .ingest.bulk import NON_RECEIPT_TYPES
+    q = select(Receipt).where(Receipt.cycle_year == year, Receipt.org_id.in_(list(org_ids)),
+                              Receipt.date.is_not(None))
+    for r in s.scalars(q):
+        if (r.amended or "").upper() == "Y" or r.receipt_type in NON_RECEIPT_TYPES:
+            continue
+        yield r
+
+
+def series_for_orgs(org_ids, year=None) -> list:
+    """Cumulative non-loan contributions by date across the given committees."""
+    year = year or get_settings().default_cycle_year
+    if not org_ids:
+        return []
+    by_date: dict = {}
+    with session_scope() as s:
+        for r in _contrib_rows(s, org_ids, year):
+            if r.receipt_type == "Loan":
+                continue
+            by_date[r.date] = by_date.get(r.date, 0) + r.amount_cents
+    series, cum = [], 0
+    for d in sorted(by_date):
+        cum += by_date[d]
+        series.append((d.isoformat(), cum))
+    return series
+
+
+def funding_sources(org_id, year=None) -> list:
+    year = year or get_settings().default_cycle_year
+    cats = {"Individuals": 0, "PACs": 0, "Party": 0, "Self / loans": 0, "Other": 0}
+    with session_scope() as s:
+        for r in _contrib_rows(s, [org_id], year):
+            if r.receipt_type == "Loan":
+                cats["Self / loans"] += r.amount_cents
+                continue
+            st = (r.source_type or "").lower()
+            if "individual" in st:
+                cats["Individuals"] += r.amount_cents
+            elif "action committee" in st or st == "pac":
+                cats["PACs"] += r.amount_cents
+            elif "party" in st:
+                cats["Party"] += r.amount_cents
+            else:
+                cats["Other"] += r.amount_cents
+    return [(k, v) for k, v in cats.items() if v > 0]
+
+
+def top_contributors(org_id, year=None, limit=8) -> list:
+    year = year or get_settings().default_cycle_year
+    agg: dict = {}
+    with session_scope() as s:
+        for r in _contrib_rows(s, [org_id], year):
+            if r.receipt_type == "Loan":
+                continue
+            name = r.source_name or "(unnamed)"
+            agg[name] = agg.get(name, 0) + r.amount_cents
+    return sorted(agg.items(), key=lambda kv: -kv[1])[:limit]

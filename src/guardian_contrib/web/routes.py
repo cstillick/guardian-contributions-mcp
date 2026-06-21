@@ -9,11 +9,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import service
+from . import charts
 from .format import register
 
 _DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(_DIR / "templates"))
 register(templates.env)
+charts.register(templates.env)
 
 # Cache-bust static assets by their newest mtime (fresh on every edit; stable in prod).
 templates.env.globals["asset_v"] = lambda: str(
@@ -26,9 +28,13 @@ static = StaticFiles(directory=str(_DIR / "static"))
 @router.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, q: str | None = None):
     data = service.dashboard_overview()
+    org_ids = [r["org_id"] for r in data["rows"] if r["org_id"]]
+    series = service.series_for_orgs(org_ids)
+    race = sorted(((r["candidate"], r["raised_cents"]) for r in data["rows"] if r["raised_cents"] > 0),
+                  key=lambda x: -x[1])[:12]
     return templates.TemplateResponse(
         request=request, name="dashboard.html",
-        context={"data": data, "active": "dashboard", "q": q})
+        context={"data": data, "series": series, "race": race, "active": "dashboard", "q": q})
 
 
 @router.get("/c/{org_id}", response_class=HTMLResponse)

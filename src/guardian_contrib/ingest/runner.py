@@ -80,13 +80,14 @@ def run_bulk_ingest(session, text: str, cycle_year: int) -> BulkStats:
 
 def enrich_committee(
     session, client: GuardianClient, org_id: str, cycle_year: int,
-    report_regex: str = r"PRE-PRIMARY", expected_district: str | None = None,
+    expected_district: str | None = None,
 ) -> dict:
-    """Fetch committee detail + the target periodic report; store report+summary.
-    Rule 5: reject if the committee's district doesn't match the roster (wrong
-    person, same name). Rule 7: reject a report whose year != cycle_year."""
-    info: dict = {"org_id": org_id, "report_stored": False, "rejected": None,
-                  "version_count": 0, "continuing_reports": 0, "district": None}
+    """Fetch committee detail + EVERY periodic report this cycle (layering model,
+    §8). Rule 5: reject if the committee's district doesn't match the roster.
+    Rule 7: skip any report whose parsed year != cycle_year."""
+    info: dict = {"org_id": org_id, "report_stored": False, "reports_stored": 0,
+                  "rejected": None, "version_count": 0, "continuing_reports": 0,
+                  "district": None}
 
     detail = client.committee_detail(org_id)
     if expected_district and detail.district and detail.district != expected_district:
@@ -110,31 +111,29 @@ def enrich_committee(
     filings = client.list_filings(org_id)
     info["continuing_reports"] = sum(1 for f in filings if classify_report(f.label) == "itemized")
 
-    rf = client.fetch_report(org_id, report_regex)
-    if rf is None:
-        return info
-    summary = parse_schedule_summary(pdf_text(rf.pdf))
-    info["version_count"] = rf.version_count
-    if summary.report_year is not None and summary.report_year != cycle_year:
-        info["rejected"] = f"report_year {summary.report_year} != cycle {cycle_year}"
-        return info  # Rule 7: wrong-cycle PDF rejected
-
-    # Cache PDF and store report + summary.
+    # Layering model (§8): pull EVERY periodic report for this cycle (Quarterly,
+    # Pre-Primary, Pre-General, ...), not just Pre-Primary. Each gives a period's
+    # balance row; the latest one is the combined base. Fetch sequentially (Rule 4).
+    periodic = [f for f in filings
+                if classify_report(f.label) == "periodic" and str(cycle_year) in f.label]
     s = get_settings()
     s.pdf_cache_dir.mkdir(parents=True, exist_ok=True)
-    pdf_path = s.pdf_cache_dir / f"{org_id}_{rf.filing_id or 'pp'}.pdf"
-    pdf_path.write_bytes(rf.pdf)
+    for f in periodic:
+        rf = client.fetch_report(org_id, anchor=f.anchor_id)
+        if rf is None or not rf.filing_id:
+            continue
+        summary = parse_schedule_summary(pdf_text(rf.pdf))
+        if summary.report_year is not None and summary.report_year != cycle_year:
+            continue  # Rule 7: wrong-cycle PDF skipped
+        info["version_count"] = max(info["version_count"], rf.version_count)
+        pdf_path = s.pdf_cache_dir / f"{org_id}_{rf.filing_id}.pdf"
+        pdf_path.write_bytes(rf.pdf)
 
-    if rf.filing_id:
         rep = session.get(Report, rf.filing_id) or Report(filing_id=rf.filing_id)
-        rep.org_id = org_id
-        rep.cycle_year = cycle_year
-        rep.report_type = rf.label
-        rep.report_class = classify_report(rf.label)
-        rep.period_start = summary.period_start
-        rep.period_end = summary.period_end
-        rep.amended = summary.amended
-        rep.is_latest_version = True
+        rep.org_id, rep.cycle_year = org_id, cycle_year
+        rep.report_type, rep.report_class = rf.label, "periodic"
+        rep.period_start, rep.period_end = summary.period_start, summary.period_end
+        rep.amended, rep.is_latest_version = summary.amended, True
         rep.source_pdf_path = str(pdf_path)
         session.add(rep)
         session.flush()
@@ -145,10 +144,13 @@ def enrich_committee(
         smry.expended_cents = summary.expended_cents
         smry.ending_cents = summary.ending_cents
         session.add(smry)
-        info["report_stored"] = True
-    if comm.district is None and summary.district:
-        comm.district = (f"HD-{summary.district}" if comm.office and "REPRESENT" in comm.office.upper()
-                         else summary.district)
+        info["reports_stored"] += 1
+        if comm.district is None and summary.district:
+            comm.district = (f"HD-{summary.district}"
+                             if comm.office and "REPRESENT" in comm.office.upper()
+                             else summary.district)
+
+    info["report_stored"] = info["reports_stored"] > 0
     return info
 
 

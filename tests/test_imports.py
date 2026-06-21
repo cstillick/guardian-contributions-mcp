@@ -10,7 +10,7 @@ MODULES = [
     "ingest.bulk", "ingest.reports", "ingest.guardian_client", "ingest.runner",
     "compute.continuing", "compute.combined", "compute.flags",
     "api.app", "mcp_server.server", "builder.xlsx",
-    "web.routes", "web.format",
+    "web.routes", "web.format", "web.charts",
 ]
 
 

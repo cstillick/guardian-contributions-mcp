@@ -7,6 +7,25 @@
     if (tr) location.href = tr.dataset.href;
   });
 
+  // Chart hover tooltips (any [data-tip] element).
+  let tip = null;
+  document.addEventListener("mouseover", (e) => {
+    const el = e.target.closest("[data-tip]");
+    if (!el) return;
+    if (!tip) { tip = document.createElement("div"); tip.id = "chart-tip"; document.body.appendChild(tip); }
+    tip.textContent = el.getAttribute("data-tip");
+    tip.style.opacity = "1";
+  });
+  document.addEventListener("mousemove", (e) => {
+    if (tip && tip.style.opacity === "1") {
+      tip.style.left = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 10) + "px";
+      tip.style.top = (e.clientY - 12) + "px";
+    }
+  });
+  document.addEventListener("mouseout", (e) => {
+    if (tip && e.target.closest("[data-tip]")) tip.style.opacity = "0";
+  });
+
   const table = document.getElementById("ledger");
   if (!table) return;
   const tbody = table.tBodies[0];

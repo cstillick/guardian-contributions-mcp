@@ -69,12 +69,14 @@ curl "localhost:8000/v1/flags?district=HD-42"
 `guardian-api` also serves a browsable **"Public Ledger"** UI at `/` — for people
 who just want to open a link and read the numbers, no API knowledge needed:
 
-- **`/`** — the roster as a sortable, filterable ledger: each candidate's combined
-  Beginning / Raised / Loan / Expended / Ending, with self-dealing-loan and other
-  flags surfaced and a freshness dateline.
-- **`/c/{org_id}`** — a candidate dossier: the balance shown as an equation
-  (Beginning + Raised + Loan − Expended = Ending), the Pre-Primary-vs-Continuing
-  split, itemized continuing contributions, filings, and flags.
+- **`/`** — the roster as a sortable, filterable ledger (combined Beginning /
+  Raised / Loan / Expended / Ending, flags, freshness dateline) plus **money-over-time**
+  and **"who's raised the most"** charts.
+- **`/c/{org_id}`** — a candidate dossier: the balance as an equation, the
+  per-**reporting-period** balance chain (every Quarterly / Pre-Primary / Pre-General
+  report via the layering model) with an **itemized vs unitemized** split, itemized
+  contributions, filings, flags, and animated charts (**money over time**,
+  **funding sources**, **top donors**).
 - **`/flags`** — every computed alert across the roster, grouped by severity.
 - **`/search`** — find any committee on file (candidates, PACs, parties) by name.
 

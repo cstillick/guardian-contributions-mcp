@@ -46,6 +46,18 @@
 </div>
 {% endif %}
 
+<div class="shead"><h2>The money race</h2><span class="meta">2026 cycle</span></div>
+<div class="card rise chart-card">
+  <h4>Total raised over time</h4>
+  <p class="csub">Cumulative itemized contributions across the roster — hover for detail</p>
+  {{ line_chart(series)|safe }}
+</div>
+<div class="card rise chart-card" style="margin-top:22px">
+  <h4>Who's raised the most</h4>
+  <p class="csub">Top of the roster by combined Raised</p>
+  {{ hbar_chart(race)|safe }}
+</div>
+
 <div class="shead"><h2>The Roster</h2>
   <span class="meta">{{ t.with_committee }} of {{ t.candidates }} have a committee on Guardian</span></div>
 
