@@ -41,13 +41,10 @@ packages = ["src/guardian_contrib"]
 # Local dev on this machine: the project path contains spaces, which silently
 # breaks uv's editable install -> imports fail. Always run with `PYTHONPATH=src`
 # (and pytest is configured below) so imports resolve regardless.
+# pythonpath=["src"] keeps tests importing the package even where the editable
+# install is flaky (e.g. a checkout under a path with spaces).
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 filterwarnings = ["ignore::DeprecationWarning"]
-
-[tool.uv]
-# Manage dependencies but don't attempt the (spaced-path-broken) editable
-# self-install; we import via PYTHONPATH=src locally and `pip install .` in Docker.
-package = false

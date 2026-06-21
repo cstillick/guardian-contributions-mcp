@@ -1,80 +1,73 @@
 # Guardian Contributions — MCP + API
 
-A reusable service that turns the manual **Oklahoma Campaign-Finance Combined
-Reports** workflow (Pre-Primary + Continuing) into:
+A reusable service for **Oklahoma Ethics Commission "Guardian" campaign-finance
+data**. It pulls and normalizes the data, then answers narrow questions through a
+REST **API** and an **MCP** server (so Claude — or any MCP host — can use it as
+tools).
 
-- a backend **REST API** that pulls and normalizes Oklahoma Ethics Commission
-  *Guardian* data, and
-- an **MCP** front-end that lets a client (Claude or any MCP host) *select
-  between categories* — politician/race (who) × financial/contribution (what) —
-  to retrieve the contribution information the workflow produces by hand today.
+It automates a workflow that's otherwise done by hand: for a roster of
+candidates, combine each one's **Pre-Primary report** (Beginning, Raised, Loans,
+Expended, Ending) with **all their Continuing contributions layered on top**, and
+flag things like self-dealing loans. The business rules come from a manual
+workflow distilled into 14 hard rules — each is enforced as a service invariant
+([table below](#the-14-hard-rules--enforced-invariants)) and backed by a test.
 
-Source of truth for the business rules is `../Continuing_Reports_Workflow_Instructions.md`
-(the 14 Hard Rules). Every rule is enforced as a service invariant (see below) and
-backed by a test. The headline acceptance check holds: a fresh pull reproduces the
-known-good June figures **to the penny** (e.g. HD-42 Cynthia Roe: Beginning
-$29,863.66 + Raised $42,750.00 − Expended $4,278.24 = Ending $68,335.42).
-
----
-
-## Architecture
-
-```
-MCP host (Claude)  ──tools──▶  MCP server ─┐
-                                           ├─▶  service layer  ─▶  normalized store
-REST client        ──HTTP───▶  FastAPI ────┘     (one place         (SQLite / Postgres)
-                                                  the rules live)         ▲
-                                                                          │ writes
-                              ingestion workers (the ONLY net access) ────┘
-                                   bulk CSV · report PDF postback chain · search
-                                                  │
-                                                  ▼
-                                         guardian.ok.gov
-```
-
-- **Ingestion** (`guardian_contrib.ingest`) is the only code that touches
-  Guardian. It downloads the bulk extract, walks the ASP.NET postback chain to
-  fetch report PDFs, and parses the Schedule Summary.
-- **Service layer** (`guardian_contrib.service`) applies the rules on read. The
-  API and MCP are thin adapters over it, so they never diverge.
-- **Store** (`guardian_contrib.models`) is SQLite locally / Postgres hosted —
-  same SQLAlchemy schema.
-
-## The two selection axes (categories)
-
-| Axis A — who / where | Axis B — what |
-|---|---|
-| candidate · committee (Org ID) · district · office · party · cycle | summary · combined · continuing_total · contributions · loans · report · filing_history · flags |
-
-A request = `{Axis A selector} × {Axis B category} × {window/options}`, available
-as focused tools/endpoints or the single flexible `query`.
+**Status:** v0.1.0. 51 tests pass; the combined figures reproduce a known-good
+deliverable **to the penny** (HD-42 Cynthia Roe: `$29,863.66 + $42,750.00 −
+$4,278.24 = $68,335.42`), and an opt-in live test verifies the whole pipeline
+against `guardian.ok.gov` end-to-end.
 
 ---
 
-## Quickstart (local)
+## Get started (about 2 minutes)
+
+**Prerequisites:** Python 3.11+ and [`uv`](https://docs.astral.sh/uv/)
+(`curl -LsSf https://astral.sh/uv/install.sh | sh`). No API key needed for local use.
 
 ```bash
+git clone https://github.com/cstillick/guardian-contributions-mcp.git
 cd guardian-contributions-mcp
-# NOTE: this path has spaces -> always prefix PYTHONPATH=src (uv's editable
-# install silently breaks under spaced paths).
+uv sync                       # create the env + install the package
 
-# tests (offline, penny-accurate against the known-good fixtures)
-PYTHONPATH=src uv run --with pytest --with pytest-asyncio --with httpx pytest -q
+# 1) run the tests (offline; proves the rules against known-good fixtures)
+uv run --extra dev pytest -q
 
-# one-off ingestion (downloads the live ~1.8 MB extract; fetches roster PDFs)
-PYTHONPATH=src uv run guardian-ingest            # add --no-reports for bulk only
+# 2) load real data from Guardian
+uv run guardian-ingest --no-reports     # fast: bulk contributions only (~5s)
+#   or the full load (also fetches Pre-Primary report PDFs for the roster,
+#   ~1–2 min because it walks Guardian's report pages one at a time):
+# uv run guardian-ingest
 
-# REST API  ->  http://localhost:8000/docs
-PYTHONPATH=src uv run guardian-api
-
-# MCP server (stdio)
-PYTHONPATH=src uv run guardian-mcp
-
-# build the Book(Sheet1) xlsx deliverable
-PYTHONPATH=src uv run guardian-build-sheet --prior /path/to/previous.xlsx
+# 3) start the API and open the docs
+uv run guardian-api           # -> http://localhost:8000/docs
 ```
 
-### MCP host config (e.g. Claude Desktop / Claude Code)
+Then ask it things:
+
+```bash
+# the cycle's reporting calendar (computed, not hardcoded)
+curl localhost:8000/v1/calendar
+
+# one candidate's combined Pre-Primary + Continuing figures
+curl "localhost:8000/v1/committees/11932/combined"
+# -> {"beginning":"29863.66","raised":"42750.00","ending":"68335.42", ...}
+
+# every candidate in a district
+curl "localhost:8000/v1/districts/HD-42/combined"
+
+# computed alerts (large loans, sub-$1,000 receipts, ...)
+curl "localhost:8000/v1/flags?district=HD-42"
+```
+
+> `guardian-ingest` needs outbound access to `guardian.ok.gov`. Reads come
+> entirely from the local database — Guardian is never touched on the request path.
+
+---
+
+## Use it from Claude (MCP)
+
+Point any MCP host at the server. For Claude Desktop / Claude Code, add to your
+MCP config:
 
 ```json
 {
@@ -82,59 +75,89 @@ PYTHONPATH=src uv run guardian-build-sheet --prior /path/to/previous.xlsx
     "guardian-contributions": {
       "command": "uv",
       "args": ["run", "guardian-mcp"],
-      "cwd": "/Users/cstillick/Desktop/Oklahoma State PAC Contributions/guardian-contributions-mcp",
-      "env": { "PYTHONPATH": "src", "GUARDIAN_DATABASE_URL": "sqlite:///./guardian.db" }
+      "cwd": "/absolute/path/to/guardian-contributions-mcp"
     }
   }
 }
 ```
 
+Then ask in plain language — *"combined Pre-Primary + Continuing for HD-42 Cynthia
+Roe,"* *"which candidates in HD-99 took loans larger than they raised?"* The model
+picks from 13 focused tools plus a flexible `query` tool.
+
 ---
 
-## Deployment (hosted, multi-user)
+## What you're selecting between (the two axes)
 
-```bash
-cd deploy
-GUARDIAN_API_KEYS=key-for-staff-1,key-for-staff-2 docker compose up -d --build
-docker compose run --rm api guardian-ingest      # initial load
+A request = **who/where** × **what**:
+
+| Axis A — who / where | Axis B — what |
+|---|---|
+| candidate · committee (Org ID) · district · office · party · cycle | summary · combined · continuing_total · contributions · loans · report · filing_history · flags |
+
+## How it works
+
+```
+guardian.ok.gov ──▶ ingestion (bulk CSV + report-PDF postback chain) ──▶ store
+                                                                           │
+                              REST API  ◀── service layer (the 14 rules) ◀─┘
+                              MCP tools  ◀──┘
 ```
 
-Brings up Postgres, the API (`:8000`, API-key auth), and the nightly scheduler
-(refresh after Guardian's ~midnight rebuild, plus denser pulls around primary
-day). Pass `X-API-Key: <key>` on every request.
+Two halves hinged on the database: a **write path** (the only code that touches
+Guardian — scrapes and normalizes on a schedule) and a **read path** (API + MCP,
+serving fast from the store). Ingestion downloads one bulk extract for *all*
+committees, then walks Guardian's ASP.NET report pages to fetch each Pre-Primary
+PDF, parses the Schedule Summary, and stores it. Reads layer the stored
+Pre-Primary figures on top of deduped continuing-window receipts.
 
----
+### API surface (`/v1`, JSON, optional `X-API-Key`)
 
-## API surface (`/v1`)
-
-| Endpoint | Category |
+| Endpoint | Returns |
 |---|---|
-| `GET /candidates?name=&district=&office=&party=` | resolution (Axis A) |
-| `GET /committees/{org_id}` · `/committees/{org_id}/filings` | committee / filings |
-| `GET /reports/{filing_id}` | one report |
-| `GET /committees/{org_id}/summary` | Pre-Primary figures |
-| `GET /committees/{org_id}/continuing` | deduped continuing total |
-| `GET /committees/{org_id}/combined` · `/districts/{d}/combined` | the headline number |
+| `GET /candidates?name=&district=&office=&party=` | resolve candidates → committees |
+| `GET /committees/{org_id}` · `/{org_id}/filings` · `/{org_id}/summary` | committee, filings, Pre-Primary figures |
+| `GET /committees/{org_id}/continuing` · `/{org_id}/combined` | deduped continuing total · the headline number |
+| `GET /districts/{d}/candidates` · `/districts/{d}/combined` | whole-race rollups |
 | `GET /contributions?org_id=&district=&from=&to=&type=&min_amount=` | itemized receipts |
-| `GET /flags?district=&org_id=` | computed alerts |
-| `GET /calendar?year=` · `GET /status` | windows · freshness |
+| `GET /reports/{filing_id}` · `/flags` · `/calendar` · `/status` | one report · alerts · windows · freshness |
 | `POST /query` | flexible Axis A × Axis B selector |
 | `POST /refresh` | trigger ingestion (background) |
 
-MCP exposes the same as focused tools plus the `query` tool, and resources
-`guardian://calendar/{year}`, `guardian://roster/{year}`, `guardian://status`.
+Full interactive docs at `/docs` when the API is running.
 
 ---
 
-## 14 Hard Rules → enforced invariants
+## Deployment
+
+**One always-on host (recommended)** — Postgres + API + nightly scheduler, no code changes:
+
+```bash
+cd deploy
+GUARDIAN_API_KEYS=staff-key-1,staff-key-2 docker compose up -d --build
+docker compose run --rm api guardian-ingest      # initial load
+```
+
+Set `GUARDIAN_DATABASE_URL` to a Postgres DSN for production (SQLite is the local
+default — same schema). Pass `X-API-Key` on every request once keys are set.
+
+**A note on serverless (e.g. Vercel):** the read API and a frontend deploy fine,
+but the **ingestion is a long, stateful scraping job** that doesn't fit serverless
+time limits. For a hosted, always-fresh service, run the scraper on something that
+allows long jobs (a small worker, a cron box, or the compose above) writing to a
+shared Postgres, and serve reads from there.
+
+---
+
+## The 14 Hard Rules → enforced invariants
 
 | # | Rule | Where it's enforced |
 |---|---|---|
 | 1 | Windows computed, never hardcoded | `reporting_calendar` (3rd-Tue-of-June); `/calendar` |
 | 2 | Continuing reports are incremental → dedup receipts | `compute.continuing` (dedup by Receipt ID) |
-| 3 | Pre-Primary can't be rebuilt from bulk | `get_summary` only serves parsed-PDF figures |
+| 3 | Pre-Primary can't be rebuilt from bulk | `get_summary` serves only parsed-PDF figures |
 | 4 | Report PDFs are retrievable | `guardian_client.fetch_report` (postback chain, sequential) |
-| 5 | Match by Org ID, confirm district | `roster.resolve_org_id` (never fuzzy) + district check |
+| 5 | Match by Org ID, confirm district | `roster.resolve_org_id` (never fuzzy) |
 | 6 | One person, multiple committees | `committee_detail.is_regular_cycle` (`lblElection`) |
 | 7 | Confirm year + committee | ingester rejects a report whose year ≠ cycle |
 | 8 | Use the amended version | postback takes the **last** `lnkView` |
@@ -147,14 +170,28 @@ MCP exposes the same as focused tools plus the `query` tool, and resources
 
 ---
 
-## Tests
+## Project layout
 
-`pytest` (30+ tests) locks the invariants against the real data:
+```
+src/guardian_contrib/
+  ingest/      bulk CSV + report-PDF postback chain + run orchestration
+  compute/     continuing-sum · combined-layering · flags  (the rules)
+  service.py   the one place rules are applied on read (API + MCP call this)
+  api/         FastAPI app          mcp_server/  MCP server (stdio)
+  builder/     Book(Sheet1) xlsx    scheduler.py nightly/election refresh
+tests/         51 tests + fixtures (incl. opt-in live e2e: GUARDIAN_LIVE=1)
+deploy/        Dockerfile + docker-compose (Postgres + API + scheduler)
+```
 
-- combined balance identity holds for **all 77 rows** of the known-good sheet
-- Roe reproduced to the penny three ways (synthetic, store, live PDF)
-- bulk parser (embedded commas, malformed rows, blank Org IDs), PDF parser,
-  continuing dedup/exclusions/split, flags, API endpoints, MCP tools, xlsx builder
+## Troubleshooting
 
-Live end-to-end checks against `guardian.ok.gov` are opt-in:
-`GUARDIAN_LIVE=1 PYTHONPATH=src uv run --with pytest pytest tests/test_live.py`.
+- **`guardian-ingest` hangs or errors:** confirm outbound access to
+  `guardian.ok.gov`. Try `uv run guardian-ingest --no-reports` first (bulk only).
+- **API returns empty/`null` data:** you haven't ingested yet — run
+  `guardian-ingest`, then check `/v1/status` for the extract as-of date.
+- **Imports fail in a checkout under a path with spaces:** prefix commands with
+  `PYTHONPATH=src` (the editable install can be flaky there); a normal path needs nothing.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
