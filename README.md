@@ -1,5 +1,11 @@
 # Guardian Contributions — MCP + API
 
+> ⚠️ **Archived — this is the original open-source prototype (`v0.1.0`, MIT).**
+> Active development has moved to a maintained **commercial edition** with a hosted
+> API + MCP, monitored data freshness (SLA), automated backups, and broader
+> coverage. This repository is frozen at `v0.1.0` and will not receive updates.
+> For a demo or licensing, contact **cooperstillick@icloud.com**.
+
 A reusable service for **Oklahoma Ethics Commission "Guardian" campaign-finance
 data**. It pulls and normalizes the data, then answers narrow questions through a
 REST **API** and an **MCP** server (so Claude — or any MCP host — can use it as
